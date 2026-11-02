@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import App from '../App';
+import CloudTrips from './CloudTrips';
 
 type Mode = 'login' | 'register' | 'reset' | 'new-password';
 
@@ -78,7 +79,7 @@ export default function AuthGate() {
       <span>{demo ? 'Демонстрационный режим · локальные данные' : `Аккаунт: ${session?.user.email ?? 'Участник'}`}</span>
       <button onClick={async () => { if (demo) setDemo(false); else await supabase.auth.signOut(); }} style={{ background: '#223d4e', border: '1px solid #487085', borderRadius: 9, color: 'white', padding: 8 }}>{demo ? 'Ко входу' : 'Выйти'}</button>
     </div>
-    <App />
+    {demo ? <App /> : <CloudTrips />}
   </div>;
 
   return <div style={{ ...shell, display: 'grid', placeItems: 'center', padding: '30px 18px' }}>
