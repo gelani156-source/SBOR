@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {House,Luggage,Route,Lightbulb,LayoutGrid,Sun,Moon,Plus,Users,CalendarDays,ChevronRight,MapPin,Wallet,CheckSquare,MessagesSquare,Images,Ticket,Map,Vote,Check,ArrowLeft,X,Send} from 'lucide-react';
+import {House,Luggage,Route,Lightbulb,LayoutGrid,Sun,Moon,Plus,Users,ChevronRight,MapPin,Wallet,CheckSquare,MessagesSquare,Images,Ticket,Map,Check,ArrowLeft,X,Send} from 'lucide-react';
 type Event={id:string,time:string,title:string,kind:string,cost:number,done:boolean};
 type Trip={id:string,name:string,dates:string,city:string,people:number,days:string[],events:Event[][]};
 type Idea={id:string,name:string,note:string,yes:number,no:number,my:0|1|-1};
