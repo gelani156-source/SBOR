@@ -1,7 +1,8 @@
 import {useCallback,useEffect,useState} from 'react';
-import {ArrowLeft,CalendarDays,Check,Cloud,LogOut,MapPin,Plus,RefreshCw,Route,Sun,Moon,Users} from 'lucide-react';
+import {ArrowLeft,CalendarDays,Check,Cloud,MapPin,Plus,RefreshCw,Route,Sun,Moon,Users} from 'lucide-react';
 import {supabase} from '../lib/supabase';
 import InvitePanel from './InvitePanel';
+import MemberPanel from './MemberPanel';
 
 type Trip={id:string;owner_id:string;title:string;destination:string;starts_on:string|null;ends_on:string|null;currency:string;status:string};
 type Place={id:string;trip_id:string;title:string;kind:string;visit_date:string|null;visit_time:string|null;address:string;estimated_cost:number|null;visited:boolean};
@@ -30,6 +31,23 @@ export default function CloudTrips(){
   }catch(e){if(active)setError('Не удалось загрузить поездки: '+errText(e));}
   finally{if(active)setLoading(false)} })();return()=>{active=false};},[fetchTrips]);
  useEffect(()=>{if(!current)return;let active=true;fetchPlaces(current.id).catch(e=>{if(active)setError('Не удалось загрузить маршрут: '+errText(e))});return()=>{active=false}},[current,fetchPlaces]);
+
+ // Shared route: background polling without changing Supabase publications or RLS.
+ // Never overwrite an in-progress edit. Updates are pulled on other devices every 15s.
+ useEffect(()=>{
+  if(!current)return;
+  let running=false;
+  const tick=async()=>{
+   if(running||document.visibilityState!=='visible'||modal||busy)return;
+   running=true;
+   try{await fetchPlaces(current.id)}catch(e){console.warn('SBOR route refresh:',errText(e))}
+   finally{running=false}
+  };
+  const timer=window.setInterval(()=>void tick(),15000);
+  const visible=()=>{if(document.visibilityState==='visible')void tick()};
+  document.addEventListener('visibilitychange',visible);
+  return()=>{window.clearInterval(timer);document.removeEventListener('visibilitychange',visible)};
+ },[current,fetchPlaces,modal,busy]);
  async function refresh(){setError('');setBusy(true);try{await fetchTrips();if(current)await fetchPlaces(current.id)}catch(e){setError(errText(e))}finally{setBusy(false)}}
  function openTrip(){setEditingPlace(null);setTitle('');setDestination('');setStart('');setEnd('');setModal('trip')}
  function openPlace(){setEditingPlace(null);setTitle('');setAddress('');setNote('');setVisitDate(current?.starts_on||'');setVisitTime('12:00');setModal('place')}
@@ -48,15 +66,16 @@ export default function CloudTrips(){
   }catch(e){setError('Не удалось сохранить: '+errText(e))}finally{setBusy(false)} }
  async function togglePlace(p:Place){setBusy(true);setError('');try{const {error}=await supabase.from('places').update({visited:!p.visited}).eq('id',p.id);if(error)throw error;await fetchPlaces(p.trip_id)}catch(e){setError(errText(e))}finally{setBusy(false)}}
  return <div className={'app '+(light?'light':'dark')}>
-  <header className="header"><div><strong className="brand">СБ<span>О</span>Р</strong><small className="muted">BETA 0.2 · поездки в облаке</small></div><button className="square" aria-label="Сменить тему" onClick={()=>setLight(v=>!v)}>{light?<Moon size={19}/>:<Sun size={19}/>}</button></header>
+  <header className="header"><div><strong className="brand">СБ<span>О</span>Р</strong><small className="muted">BETA 0.3 · путешествуем вместе</small></div><button className="square" aria-label="Сменить тему" onClick={()=>setLight(v=>!v)}>{light?<Moon size={19}/>:<Sun size={19}/>}</button></header>
   <main className="content">
-   <div className="row" style={{margin:'8px 0 18px'}}><div className="small muted"><Cloud size={15}/> {email||'Авторизация Supabase'}</div><button className="secondary" onClick={()=>void supabase.auth.signOut()}><LogOut size={15}/> Выйти</button></div>
+   <div className="row" style={{margin:'8px 0 18px'}}><div className="small muted"><Cloud size={15}/> {email||'Авторизация Supabase'}</div></div>
    {error&&<article role="alert" className="card" style={{borderColor:'#d47d7d',color:'var(--text)'}}><strong>Не удалось выполнить действие</strong><p className="small">{error}</p><button className="secondary" onClick={()=>setError('')}>Закрыть</button></article>}
    {!current&&<InvitePanel tripId={null} isAdmin={false} onJoined={refresh}/>}
    {current?<>
      <button className="secondary" onClick={()=>{setCurrent(null);setPlaces([])}}><ArrowLeft size={15}/> Мои поездки</button>
      <p className="eyebrow accent" style={{marginTop:20}}>ОБЛАЧНОЕ ПУТЕШЕСТВИЕ</p><h1>{current.title}</h1>
      <div className="card"><p><MapPin size={15} style={{verticalAlign:'middle'}}/> {current.destination||'Направление не указано'}</p><p className="muted small"><CalendarDays size={14} style={{verticalAlign:'middle'}}/> {formatDate(current.starts_on)} — {formatDate(current.ends_on)}</p></div>
+     <MemberPanel tripId={current.id} ownerId={current.owner_id} userId={uid}/>
      <InvitePanel tripId={current.id} isAdmin={current.owner_id===uid} onJoined={refresh}/>
      <section><div className="row"><h3>Маршрут</h3><button className="primary" onClick={openPlace}><Plus size={15}/> Место</button></div>
      {places.length===0?<article className="card centered"><Route size={34}/><h3>Маршрут пока пуст</h3><p className="muted small">Добавь первое мероприятие — оно сохранится в Supabase.</p></article>:
