@@ -5,7 +5,20 @@ import {supabase} from '../lib/supabase';
 type Trip={id:string;owner_id:string;title:string;destination:string;starts_on:string|null;ends_on:string|null;currency:string;status:string};
 type Place={id:string;trip_id:string;title:string;kind:string;visit_date:string|null;visit_time:string|null;address:string;estimated_cost:number|null;visited:boolean};
 const formatDate=(d:string|null)=>d?new Date(d+'T12:00:00').toLocaleDateString('ru-RU',{day:'numeric',month:'short',year:'numeric'}):'Дата не выбрана';
-const errText=(e:unknown)=>e instanceof Error?e.message:String(e);
+const errText=(e:unknown)=>{
+ if(e instanceof Error)return e.message;
+ if(e&&typeof e==='object'){
+  const x=e as Record<string,unknown>;
+  return [
+   x.message,
+   x.code ? 'Код: '+x.code : '',
+   x.details,
+   x.hint
+  ].filter(Boolean).map(String).join(' | ')
+   || JSON.stringify(e);
+ }
+ return String(e);
+};
 
 export default function CloudTrips(){
  const [uid,setUid]=useState(''); const [email,setEmail]=useState('');
