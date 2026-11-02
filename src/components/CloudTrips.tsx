@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useState} from 'react';
 import {ArrowLeft,CalendarDays,Check,Cloud,LogOut,MapPin,Plus,RefreshCw,Route,Sun,Moon,Users} from 'lucide-react';
 import {supabase} from '../lib/supabase';
+import InvitePanel from './InvitePanel';
 
 type Trip={id:string;owner_id:string;title:string;destination:string;starts_on:string|null;ends_on:string|null;currency:string;status:string};
 type Place={id:string;trip_id:string;title:string;kind:string;visit_date:string|null;visit_time:string|null;address:string;estimated_cost:number|null;visited:boolean};
@@ -51,10 +52,12 @@ export default function CloudTrips(){
   <main className="content">
    <div className="row" style={{margin:'8px 0 18px'}}><div className="small muted"><Cloud size={15}/> {email||'Авторизация Supabase'}</div><button className="secondary" onClick={()=>void supabase.auth.signOut()}><LogOut size={15}/> Выйти</button></div>
    {error&&<article role="alert" className="card" style={{borderColor:'#d47d7d',color:'var(--text)'}}><strong>Не удалось выполнить действие</strong><p className="small">{error}</p><button className="secondary" onClick={()=>setError('')}>Закрыть</button></article>}
+   {!current&&<InvitePanel tripId={null} isAdmin={false} onJoined={refresh}/>}
    {current?<>
      <button className="secondary" onClick={()=>{setCurrent(null);setPlaces([])}}><ArrowLeft size={15}/> Мои поездки</button>
      <p className="eyebrow accent" style={{marginTop:20}}>ОБЛАЧНОЕ ПУТЕШЕСТВИЕ</p><h1>{current.title}</h1>
      <div className="card"><p><MapPin size={15} style={{verticalAlign:'middle'}}/> {current.destination||'Направление не указано'}</p><p className="muted small"><CalendarDays size={14} style={{verticalAlign:'middle'}}/> {formatDate(current.starts_on)} — {formatDate(current.ends_on)}</p></div>
+     <InvitePanel tripId={current.id} isAdmin={current.owner_id===uid} onJoined={refresh}/>
      <section><div className="row"><h3>Маршрут</h3><button className="primary" onClick={openPlace}><Plus size={15}/> Место</button></div>
      {places.length===0?<article className="card centered"><Route size={34}/><h3>Маршрут пока пуст</h3><p className="muted small">Добавь первое мероприятие — оно сохранится в Supabase.</p></article>:
      places.map(p=><div className="event" key={p.id}><div className="rail"><span/><i/></div><article className="card eventcard"><p className="eyebrow accent">{formatDate(p.visit_date)} · {p.visit_time?.slice(0,5)||'Время не задано'}</p><strong>{p.title}</strong><div className="row topgap"><span className="muted small">{p.address||p.kind}</span><div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}><button className={'secondary '+(p.visited?'done':'')} disabled={busy} onClick={()=>void togglePlace(p)}><Check size={14}/>{p.visited?'Посещено':'Отметить'}</button><button className="secondary" disabled={busy} onClick={()=>editPlace(p)}>Изменить</button><button className="secondary" disabled={busy} onClick={()=>void removePlace(p)}>Удалить</button></div></div></article></div>)}
