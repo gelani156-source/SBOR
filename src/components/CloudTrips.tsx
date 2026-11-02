@@ -5,20 +5,7 @@ import {supabase} from '../lib/supabase';
 type Trip={id:string;owner_id:string;title:string;destination:string;starts_on:string|null;ends_on:string|null;currency:string;status:string};
 type Place={id:string;trip_id:string;title:string;kind:string;visit_date:string|null;visit_time:string|null;address:string;estimated_cost:number|null;visited:boolean};
 const formatDate=(d:string|null)=>d?new Date(d+'T12:00:00').toLocaleDateString('ru-RU',{day:'numeric',month:'short',year:'numeric'}):'Дата не выбрана';
-const errText=(e:unknown)=>{
- if(e instanceof Error)return e.message;
- if(e&&typeof e==='object'){
-  const x=e as Record<string,unknown>;
-  return [
-   x.message,
-   x.code ? 'Код: '+x.code : '',
-   x.details,
-   x.hint
-  ].filter(Boolean).map(String).join(' | ')
-   || JSON.stringify(e);
- }
- return String(e);
-};
+const errText=(e:unknown)=>{if(e instanceof Error)return e.message;if(e&&typeof e==='object'){const x=e as Record<string,unknown>;return [x.message,x.code?'Код: '+x.code:'',x.details,x.hint].filter(Boolean).map(String).join(' | ')||JSON.stringify(e)}return String(e)};
 
 export default function CloudTrips(){
  const [uid,setUid]=useState(''); const [email,setEmail]=useState('');
@@ -27,7 +14,7 @@ export default function CloudTrips(){
  const [error,setError]=useState(''); const [modal,setModal]=useState<'trip'|'place'|null>(null);
  const [title,setTitle]=useState(''); const [destination,setDestination]=useState('');
  const [start,setStart]=useState(''); const [end,setEnd]=useState(''); const [visitDate,setVisitDate]=useState(''); const [visitTime,setVisitTime]=useState('12:00');
- const [light,setLight]=useState(false);
+ const [light,setLight]=useState(false); const [editingPlace,setEditingPlace]=useState<string|null>(null); const [address,setAddress]=useState(''); const [,setNote]=useState('');
  const fetchTrips=useCallback(async()=>{
   const {data,error}=await supabase.from('trips').select('id,owner_id,title,destination,starts_on,ends_on,currency,status').order('created_at',{ascending:false});
   if(error)throw error;setTrips((data||[]) as Trip[]);
@@ -43,16 +30,19 @@ export default function CloudTrips(){
   finally{if(active)setLoading(false)} })();return()=>{active=false};},[fetchTrips]);
  useEffect(()=>{if(!current)return;let active=true;fetchPlaces(current.id).catch(e=>{if(active)setError('Не удалось загрузить маршрут: '+errText(e))});return()=>{active=false}},[current,fetchPlaces]);
  async function refresh(){setError('');setBusy(true);try{await fetchTrips();if(current)await fetchPlaces(current.id)}catch(e){setError(errText(e))}finally{setBusy(false)}}
- function openTrip(){setTitle('');setDestination('');setStart('');setEnd('');setModal('trip')}
- function openPlace(){setTitle('');setVisitDate(current?.starts_on||'');setVisitTime('12:00');setModal('place')}
+ function openTrip(){setEditingPlace(null);setTitle('');setDestination('');setStart('');setEnd('');setModal('trip')}
+ function openPlace(){setEditingPlace(null);setTitle('');setAddress('');setNote('');setVisitDate(current?.starts_on||'');setVisitTime('12:00');setModal('place')}
+ function editPlace(p:Place){setEditingPlace(p.id);setTitle(p.title);setAddress(p.address||'');setNote('');setVisitDate(p.visit_date||'');setVisitTime(p.visit_time?.slice(0,5)||'12:00');setModal('place')}
+ async function removePlace(p:Place){if(!window.confirm('Удалить мероприятие «'+p.title+'»?'))return;setBusy(true);setError('');try{const {data,error}=await supabase.from('places').delete().eq('id',p.id).eq('trip_id',p.trip_id).select('id');if(error)throw error;if(!data?.length)throw new Error('Мероприятие не удалено. Проверь права доступа.');await fetchPlaces(p.trip_id)}catch(e){setError('Не удалось удалить: '+errText(e))}finally{setBusy(false)}}
  async function create(){if(!title.trim()||!uid)return;setBusy(true);setError('');try{
    if(modal==='trip'){
     if(start&&end&&end<start)throw new Error('Дата окончания раньше начала');
     const {data,error}=await supabase.from('trips').insert({owner_id:uid,title:title.trim(),destination:destination.trim(),starts_on:start||null,ends_on:end||null}).select('id,owner_id,title,destination,starts_on,ends_on,currency,status').single();
     if(error)throw error;const newTrip=data as Trip;setTrips(v=>[newTrip,...v]);setCurrent(newTrip);setPlaces([]);
    }else if(modal==='place'&&current){
-    const {error}=await supabase.from('places').insert({trip_id:current.id,title:title.trim(),visit_date:visitDate||null,visit_time:visitTime||null,kind:'Место',created_by:uid});
-    if(error)throw error;await fetchPlaces(current.id);
+    const fields={title:title.trim(),visit_date:visitDate||null,visit_time:visitTime||null,address:address.trim()};
+    if(editingPlace){const {data,error}=await supabase.from('places').update(fields).eq('id',editingPlace).eq('trip_id',current.id).select('id');if(error)throw error;if(!data?.length)throw new Error('Мероприятие не изменено. Проверь права доступа.');}
+    else {const {error}=await supabase.from('places').insert({...fields,trip_id:current.id,kind:'Место',created_by:uid});if(error)throw error;}await fetchPlaces(current.id);
    }setModal(null);
   }catch(e){setError('Не удалось сохранить: '+errText(e))}finally{setBusy(false)} }
  async function togglePlace(p:Place){setBusy(true);setError('');try{const {error}=await supabase.from('places').update({visited:!p.visited}).eq('id',p.id);if(error)throw error;await fetchPlaces(p.trip_id)}catch(e){setError(errText(e))}finally{setBusy(false)}}
@@ -67,7 +57,7 @@ export default function CloudTrips(){
      <div className="card"><p><MapPin size={15} style={{verticalAlign:'middle'}}/> {current.destination||'Направление не указано'}</p><p className="muted small"><CalendarDays size={14} style={{verticalAlign:'middle'}}/> {formatDate(current.starts_on)} — {formatDate(current.ends_on)}</p></div>
      <section><div className="row"><h3>Маршрут</h3><button className="primary" onClick={openPlace}><Plus size={15}/> Место</button></div>
      {places.length===0?<article className="card centered"><Route size={34}/><h3>Маршрут пока пуст</h3><p className="muted small">Добавь первое мероприятие — оно сохранится в Supabase.</p></article>:
-     places.map(p=><div className="event" key={p.id}><div className="rail"><span/><i/></div><article className="card eventcard"><p className="eyebrow accent">{formatDate(p.visit_date)} · {p.visit_time?.slice(0,5)||'Время не задано'}</p><strong>{p.title}</strong><div className="row topgap"><span className="muted small">{p.address||p.kind}</span><button className={'secondary '+(p.visited?'done':'')} disabled={busy} onClick={()=>void togglePlace(p)}><Check size={14}/>{p.visited?'Посещено':'Отметить'}</button></div></article></div>)}
+     places.map(p=><div className="event" key={p.id}><div className="rail"><span/><i/></div><article className="card eventcard"><p className="eyebrow accent">{formatDate(p.visit_date)} · {p.visit_time?.slice(0,5)||'Время не задано'}</p><strong>{p.title}</strong><div className="row topgap"><span className="muted small">{p.address||p.kind}</span><div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}><button className={'secondary '+(p.visited?'done':'')} disabled={busy} onClick={()=>void togglePlace(p)}><Check size={14}/>{p.visited?'Посещено':'Отметить'}</button><button className="secondary" disabled={busy} onClick={()=>editPlace(p)}>Изменить</button><button className="secondary" disabled={busy} onClick={()=>void removePlace(p)}>Удалить</button></div></div></article></div>)}
      </section><button className="secondary" style={{marginTop:16}} onClick={()=>void refresh()} disabled={busy}><RefreshCw size={15}/> Обновить маршрут</button>
     </>:<>
     <p className="eyebrow">МОИ ПУТЕШЕСТВИЯ</p><h1>Куда собираемся? 👋</h1>
@@ -77,9 +67,9 @@ export default function CloudTrips(){
     </section><button className="secondary" style={{marginTop:16}} onClick={()=>void refresh()} disabled={busy}><RefreshCw size={15}/> Обновить список</button>
    </>}
   </main>
-  {modal&&<div className="overlay" onClick={()=>!busy&&setModal(null)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="row"><h2>{modal==='trip'?'Новое путешествие':'Добавить мероприятие'}</h2><button className="square" aria-label="Закрыть" onClick={()=>setModal(null)}>✕</button></div>
+  {modal&&<div className="overlay" onClick={()=>!busy&&setModal(null)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="row"><h2>{modal==='trip'?'Новое путешествие':editingPlace?'Изменить мероприятие':'Добавить мероприятие'}</h2><button className="square" aria-label="Закрыть" onClick={()=>setModal(null)}>✕</button></div>
     <input value={title} onChange={e=>setTitle(e.target.value)} placeholder={modal==='trip'?'Название поездки':'Название места'} maxLength={120}/>
-    {modal==='trip'?<><input value={destination} onChange={e=>setDestination(e.target.value)} placeholder="Город или страна" maxLength={120}/><label className="small muted">Дата начала<input type="date" value={start} onChange={e=>setStart(e.target.value)}/></label><label className="small muted">Дата окончания<input type="date" value={end} onChange={e=>setEnd(e.target.value)}/></label></>:<><label className="small muted">Дата посещения<input type="date" value={visitDate} onChange={e=>setVisitDate(e.target.value)}/></label><label className="small muted">Время<input type="time" value={visitTime} onChange={e=>setVisitTime(e.target.value)}/></label></>}
+    {modal==='trip'?<><input value={destination} onChange={e=>setDestination(e.target.value)} placeholder="Город или страна" maxLength={120}/><label className="small muted">Дата начала<input type="date" value={start} onChange={e=>setStart(e.target.value)}/></label><label className="small muted">Дата окончания<input type="date" value={end} onChange={e=>setEnd(e.target.value)}/></label></>:<><label className="small muted">Дата посещения<input type="date" value={visitDate} onChange={e=>setVisitDate(e.target.value)}/></label><label className="small muted">Время<input type="time" value={visitTime} onChange={e=>setVisitTime(e.target.value)}/></label><input value={address} onChange={e=>setAddress(e.target.value)} placeholder="Адрес или место встречи" maxLength={300}/></>}
     <button className="primary wide" disabled={busy||!title.trim()} onClick={()=>void create()}>{busy?'Сохраняем…':'Сохранить в Supabase'}</button>
     {error&&<p className="small" style={{color:'#ff9999'}}>{error}</p>}
   </div></div>}
