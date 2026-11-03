@@ -3,6 +3,7 @@ import {ArrowLeft,CalendarDays,Check,Cloud,MapPin,Plus,RefreshCw,Route,Sun,Moon,
 import {supabase} from '../lib/supabase';
 import InvitePanel from './InvitePanel';
 import MemberPanel from './MemberPanel';
+import PlanningPanel from './PlanningPanel';
 
 type Trip={id:string;owner_id:string;title:string;destination:string;starts_on:string|null;ends_on:string|null;currency:string;status:string};
 type Place={id:string;trip_id:string;title:string;kind:string;visit_date:string|null;visit_time:string|null;address:string;estimated_cost:number|null;visited:boolean};
@@ -77,6 +78,7 @@ export default function CloudTrips(){
      <div className="card"><p><MapPin size={15} style={{verticalAlign:'middle'}}/> {current.destination||'Направление не указано'}</p><p className="muted small"><CalendarDays size={14} style={{verticalAlign:'middle'}}/> {formatDate(current.starts_on)} — {formatDate(current.ends_on)}</p></div>
      <MemberPanel tripId={current.id} ownerId={current.owner_id} userId={uid}/>
      <InvitePanel tripId={current.id} isAdmin={current.owner_id===uid} onJoined={refresh}/>
+     <PlanningPanel tripId={current.id} userId={uid} currency={current.currency}/>
      <section><div className="row"><h3>Маршрут</h3><button className="primary" onClick={openPlace}><Plus size={15}/> Место</button></div>
      {places.length===0?<article className="card centered"><Route size={34}/><h3>Маршрут пока пуст</h3><p className="muted small">Добавь первое мероприятие — оно сохранится в Supabase.</p></article>:
      places.map(p=><div className="event" key={p.id}><div className="rail"><span/><i/></div><article className="card eventcard"><p className="eyebrow accent">{formatDate(p.visit_date)} · {p.visit_time?.slice(0,5)||'Время не задано'}</p><strong>{p.title}</strong><div className="row topgap"><span className="muted small">{p.address||p.kind}</span><div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}><button className={'secondary '+(p.visited?'done':'')} disabled={busy} onClick={()=>void togglePlace(p)}><Check size={14}/>{p.visited?'Посещено':'Отметить'}</button><button className="secondary" disabled={busy} onClick={()=>editPlace(p)}>Изменить</button><button className="secondary" disabled={busy} onClick={()=>void removePlace(p)}>Удалить</button></div></div></article></div>)}
