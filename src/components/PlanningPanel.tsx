@@ -121,12 +121,20 @@ export default function PlanningPanel({tripId,userId,currency='RUB',onAddPlace}:
  const myCredits=debts.filter(x=>x.creditor===userId)
  const myDebtSum=myDebts.reduce((sum,x)=>sum+x.amount,0)
  const myCreditSum=myCredits.reduce((sum,x)=>sum+x.amount,0)
+ // Pending requests reserve part of the debt until the creditor confirms or rejects them.
+ const availableDebts=myDebts.map(d=>({
+  ...d,available:Math.max(0,Math.round((d.amount-settlements
+   .filter(s=>s.debtor_id===userId&&s.creditor_id===d.creditor&&s.currency===currency&&s.status==='pending')
+   .reduce((sum,s)=>sum+Number(s.amount),0))*100)/100)
+ })).filter(d=>d.available>0)
+ const availableSum=availableDebts.reduce((sum,d)=>sum+d.available,0)
+
  const sendTransfer=()=>void run(async()=>{
   const n=number(transferAmount)
   if(!Number.isFinite(n)||n<=0||cents(n)/100!==n)throw new Error('Неверная сумма')
   const current=myDebts.find(x=>x.creditor===transferTo)
   const pending=settlements.filter(x=>x.debtor_id===userId&&x.creditor_id===transferTo&&x.status==='pending').reduce((a,b)=>a+Number(b.amount),0)
-  if(!current||n>current.amount-pending+0.001)throw new Error('Сумма превышает непогашенный долг')
+  if(!current||n>Math.max(0,current.amount-pending)+0.000001)throw new Error('Доступная для возврата сумма меньше указанной. Дождись подтверждения или отклонения отправленного возврата.')
   const {error}=await supabase.rpc('sbor_request_settlement',{p_trip_id:tripId,p_creditor_id:transferTo,p_amount:n});if(error)throw error
   setTransferAmount('');setTransferTo('')
  },'Ожидаем подтверждения получателя')
@@ -170,7 +178,14 @@ export default function PlanningPanel({tripId,userId,currency='RUB',onAddPlace}:
     </article>)}
     <div style={{...line,marginTop:6}}><h3>Баланс компании</h3><p className="muted small">Долги рассчитываются с взаимозачётом встречных расходов. Подтверждённые возвраты уменьшают задолженность.</p><strong>Вы должны: {amount(myDebtSum,currency)}</strong><strong>Вам должны: {amount(myCreditSum,currency)}</strong>
      {debts.map(d=><div key={d.debtor+'-'+d.creditor} className="muted small">{name(d.debtor)} → {name(d.creditor)}: {amount(d.amount,currency)}</div>)}
-     {myDebts.length>0&&<><strong>Сообщить о возврате</strong><select style={input} value={transferTo} onChange={e=>setTransferTo(e.target.value)}><option value="">Выбери получателя</option>{myDebts.map(x=><option key={x.creditor} value={x.creditor}>{name(x.creditor)} · {amount(x.amount,currency)}</option>)}</select><input style={input} inputMode="decimal" placeholder="Сумма перевода" value={transferAmount} onChange={e=>setTransferAmount(e.target.value)}/><button className="primary" disabled={!transferTo||busy} onClick={sendTransfer}>Отправить на подтверждение</button></>}
+     {myDebts.length>0&&<><strong>Сообщить о возврате</strong>
+      {availableSum<=0?<p className="muted small">Все долги уже отправлены на подтверждение. Дождись ответа получателя.</p>:<>
+       <p className="muted small">Доступно для нового возврата: {amount(availableSum,currency)}. Суммы ожидающих подтверждения переводов зарезервированы.</p>
+       <select style={input} value={transferTo} onChange={e=>{setTransferTo(e.target.value);setTransferAmount('')}}><option value="">Выбери получателя</option>{availableDebts.map(x=><option key={x.creditor} value={x.creditor}>{name(x.creditor)} · {amount(x.available,currency)}</option>)}</select>
+       <input style={input} inputMode="decimal" placeholder="Сумма перевода" value={transferAmount} onChange={e=>setTransferAmount(e.target.value)}/>
+       <button className="primary" disabled={!transferTo||busy||!Number.isFinite(number(transferAmount))||number(transferAmount)<=0||number(transferAmount)>(availableDebts.find(x=>x.creditor===transferTo)?.available||0)} onClick={sendTransfer}>Отправить на подтверждение</button>
+      </>}
+     </>}
      <h3>История возвратов</h3>{!settlements.length&&<p className="muted small">Возвратов пока нет</p>}
      {settlements.map(s=><div key={s.id} style={{...line,gap:6}}><strong>{name(s.debtor_id)} → {name(s.creditor_id)} · {amount(Number(s.amount),s.currency)}</strong><span className="muted small">{new Date(s.requested_at).toLocaleDateString('ru-RU')} · {s.status==='pending'?'Ожидает подтверждения':s.status==='confirmed'?'Подтверждено':'Отклонено'}</span>{s.status==='pending'&&s.creditor_id===userId&&<div style={{display:'flex',gap:7}}><button className="primary" disabled={busy} onClick={()=>resolveTransfer(s.id,true)}>Подтвердить получение</button><button className="secondary" disabled={busy} onClick={()=>resolveTransfer(s.id,false)}>Отклонить</button></div>}</div>)}
     </div>

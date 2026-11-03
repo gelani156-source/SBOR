@@ -1,3 +1,5 @@
+import ProfileSettings from './ProfileSettings';
+import TripChat from './TripChat';
 import {useCallback,useEffect,useState} from 'react';
 import {ArrowLeft,CalendarDays,Check,Cloud,MapPin,Plus,RefreshCw,Route,Sun,Moon,Users} from 'lucide-react';
 import {supabase} from '../lib/supabase';
@@ -67,8 +69,9 @@ export default function CloudTrips(){
   }catch(e){setError('Не удалось сохранить: '+errText(e))}finally{setBusy(false)} }
  async function togglePlace(p:Place){setBusy(true);setError('');try{const {error}=await supabase.from('places').update({visited:!p.visited}).eq('id',p.id);if(error)throw error;await fetchPlaces(p.trip_id)}catch(e){setError(errText(e))}finally{setBusy(false)}}
  return <div className={'app '+(light?'light':'dark')}>
-  <header className="header"><div><strong className="brand">СБ<span>О</span>Р</strong><small className="muted">BETA 0.3 · путешествуем вместе</small></div><button className="square" aria-label="Сменить тему" onClick={()=>setLight(v=>!v)}>{light?<Moon size={19}/>:<Sun size={19}/>}</button></header>
+  <header className="header"><div><strong className="brand">СБ<span>О</span>Р</strong><small className="muted">1.0 RC · путешествуем вместе</small></div><button className="square" aria-label="Сменить тему" onClick={()=>setLight(v=>!v)}>{light?<Moon size={19}/>:<Sun size={19}/>}</button></header>
   <main className="content">
+   {uid&&<ProfileSettings userId={uid}/>}
    <div className="row" style={{margin:'8px 0 18px'}}><div className="small muted"><Cloud size={15}/> {email||'Авторизация Supabase'}</div></div>
    {error&&<article role="alert" className="card" style={{borderColor:'#d47d7d',color:'var(--text)'}}><strong>Не удалось выполнить действие</strong><p className="small">{error}</p><button className="secondary" onClick={()=>setError('')}>Закрыть</button></article>}
    {!current&&<InvitePanel tripId={null} isAdmin={false} onJoined={refresh}/>}
@@ -78,7 +81,11 @@ export default function CloudTrips(){
      <div className="card"><p><MapPin size={15} style={{verticalAlign:'middle'}}/> {current.destination||'Направление не указано'}</p><p className="muted small"><CalendarDays size={14} style={{verticalAlign:'middle'}}/> {formatDate(current.starts_on)} — {formatDate(current.ends_on)}</p></div>
      <MemberPanel tripId={current.id} ownerId={current.owner_id} userId={uid}/>
      <InvitePanel tripId={current.id} isAdmin={current.owner_id===uid} onJoined={refresh}/>
-     <PlanningPanel tripId={current.id} userId={uid} currency={current.currency}/>
+     <PlanningPanel tripId={current.id} userId={uid} currency={current.currency} onAddPlace={async (ideaTitle)=>{
+       const {error}=await supabase.from('places').insert({trip_id:current.id,title:ideaTitle,kind:'Идея',created_by:uid});
+       if(error)throw error;await fetchPlaces(current.id);
+     }}/>
+     <TripChat tripId={current.id} userId={uid}/>
      <section><div className="row"><h3>Маршрут</h3><button className="primary" onClick={openPlace}><Plus size={15}/> Место</button></div>
      {places.length===0?<article className="card centered"><Route size={34}/><h3>Маршрут пока пуст</h3><p className="muted small">Добавь первое мероприятие — оно сохранится в Supabase.</p></article>:
      places.map(p=><div className="event" key={p.id}><div className="rail"><span/><i/></div><article className="card eventcard"><p className="eyebrow accent">{formatDate(p.visit_date)} · {p.visit_time?.slice(0,5)||'Время не задано'}</p><strong>{p.title}</strong><div className="row topgap"><span className="muted small">{p.address||p.kind}</span><div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}><button className={'secondary '+(p.visited?'done':'')} disabled={busy} onClick={()=>void togglePlace(p)}><Check size={14}/>{p.visited?'Посещено':'Отметить'}</button><button className="secondary" disabled={busy} onClick={()=>editPlace(p)}>Изменить</button><button className="secondary" disabled={busy} onClick={()=>void removePlace(p)}>Удалить</button></div></div></article></div>)}
